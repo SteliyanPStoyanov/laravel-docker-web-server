@@ -182,7 +182,7 @@ Install portainer by setting a user/pass and set it to use your local stack and 
 Generate ssl sertificate for local development this is required for default containers
 
 ```bash 
-mkcert -cert-file cert -key-file cert-key portainer.localhost traefik.localhost mailhog.localhost elasticsearch.localhost mariadb.localhost phpmyadmin.localhost kibana.localhost
+mkcert -cert-file ./docker_files/cert -key-file ./docker_files/cert-key portainer.localhost traefik.localhost mailhog.localhost elasticsearch.localhost mariadb.localhost phpmyadmin.localhost kibana.localhost
 ```
 
 ## Export database
@@ -191,4 +191,21 @@ Export database from mysql container
 
 ```bash
 sudo /usr/bin/mysqldump --complete-insert --all-databases --result-file=/home/sstoyanov/Database/wowtea_local_10_10.sql --skip-add-drop-table --skip-lock-tables --skip-add-locks --user=root --password=root --host=172.20.0.6 --port=3306
+```
+
+## Webserver 
+
+Build container commands
+```bash
+bin/build
+```
+
+Start all container commands
+```bash
+bin/start
+```
+
+Stop all container commands
+```bash
+bin/stop
 ```
