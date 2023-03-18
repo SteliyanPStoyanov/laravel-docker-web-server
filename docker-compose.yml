@@ -1,0 +1,235 @@
+version: '3.9'
+
+networks:
+  web:
+    external: true
+  internal:
+    external: false
+
+services:
+  traefik:
+    container_name: traefik
+    image: traefik:v2.9
+    ports:
+      - "80:80"      # The HTTP port
+      - "443:443"
+      - "8080:8080"
+      - "9900:9900"
+      - "9901:9901"
+    command:
+      # Enable Hub communication (open the port 9900 and 9901 by default)
+      # 02312c4a-6a98-4eb8-95ae-be498b84f9de
+      - --providers.docker
+      # Enable Hub communication (open the port 9900 and 9901 by default)
+      - --experimental.hub=true
+      - --metrics.prometheus.addrouterslabels=true
+            # Path to the certificate authority which signed TLS credentials.
+      - --traefik.tls.ca=/docker_files/proxy.traefik.localhost.pem
+      # Path to the certificate (must have proxy.traefik domain name) used to communicate with Traefik Hub Agent.
+      - --traefik.tls.cert=/docker_files/proxy.traefik.localhost.pem
+      # Path to the key used to communicate with Traefik Hub Agent.
+      - --traefik.tls.key=/docker_files/proxy.traefik.localhost.pem
+      - --entrypoints.traefikhub-tunl.address=:9901
+      - --entrypoints.traefikhub-api.address=:9900
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # So that Traefik can listen to the Docker events
+      - ./docker_files/traefik.toml:/etc/traefik/traefik.toml
+      - ./docker_files/traefik_secure.toml:/etc/traefik/traefik_secure.toml
+      - ./docker_files/cert:/etc/traefik/cert
+      - ./docker_files/cert-key:/etc/traefik/cert-key
+      - ./docker_files:/certs
+    networks:
+      web:
+        ipv4_address: 172.20.0.2
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.api.entrypoints=websecure
+      - traefik.http.routers.api.rule=Host(`traefik.localhost`)
+      - traefik.http.routers.api.tls.options=default
+      - traefik.http.routers.api.service=api@internal
+    restart: always
+
+  hub-agent:
+    image: ghcr.io/traefik/hub-agent-traefik:experimental
+    pull_policy: always
+    container_name: hub-agent
+    restart: "on-failure"
+    command:
+      - run
+      - --hub.token=36ccdfc0-cc6b-496a-8d8f-2a104c7a7d64
+      - --auth-server.advertise-url=http://hub-agent
+      - --traefik.host=traefik.localhost
+      # Path to the certificate authority which signed TLS credentials.
+      - --traefik.tls.ca=/certs/agent.traefik.pem
+      # Path to the certificate (must have proxy.traefik domain name) used to communicate with Traefik Hub Agent.
+      - --traefik.tls.cert=/certs/agent.traefik.pem
+      # Path to the key used to communicate with Traefik Hub Agent.
+      - --traefik.tls.key=/certs/agent.traefik-key.pem
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker_files:/certs
+    depends_on:
+      - traefik
+    networks:
+       web:
+        ipv4_address: 172.20.0.10
+
+  portainer:
+    image: portainer/portainer-ce # A container that exposes an API to show it's IP address
+    container_name: portainer
+    restart: always
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.portainer.entrypoints=websecure
+      - traefik.http.routers.portainer.rule=Host(`portainer.localhost`)
+      - traefik.http.routers.portainer.tls.options=default
+      - traefik.http.services.portainer.loadbalancer.server.port=9000
+    networks:
+      web:
+        ipv4_address: 172.20.0.8
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_datas:/data
+
+  db:
+    image: mariadb:10.4.13
+    container_name: mariadb
+    hostname: mariadb
+    mem_reservation: 4000M
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_USER=magento
+      - MYSQL_PASSWORD=magento
+    volumes:
+      - dbdata:/var/lib/mysql
+      - ./docker_files/database/backups:/var/tmp/backups
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.db.entrypoints=websecure
+      - traefik.http.routers.db.rule=Host(`mariadb.localhost`)
+      - traefik.http.routers.db.tls.options=default
+      - traefik.http.services.db.loadbalancer.server.port=3306
+    networks:
+      web:
+        ipv4_address: 172.20.0.3
+
+  phpmyadmin:
+    container_name: phpmyadmin
+    build:
+      context: .
+      dockerfile: docker_files/phpmyadmin/Dockerfile
+    links:
+      - db
+    restart: always
+    volumes:
+      - ./docker_files/phpmyadmin/darkwolf:/var/www/html/themes/darkwolf
+      - ./docker_files/phpmyadmin/boodark:/var/www/html/themes/boodark
+      - /sessions
+      - ./docker_files/phpmyadmin/config.inc.php:/etc/phpmyadmin/config.inc.php
+      - /var/run/mysqld/mysqld.sock:/tmp/mysqld.sock
+    environment:
+      UPLOAD_LIMIT: 4G
+      POST_MAX_SIZE: 4G
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.phpmyadmin.entrypoints=websecure
+      - traefik.http.routers.phpmyadmin.rule=Host(`phpmyadmin.localhost`)
+      - traefik.http.routers.phpmyadmin.tls.options=default
+      - traefik.http.services.phpmyadmin.loadbalancer.server.port=80
+    networks:
+      web:
+        ipv4_address: 172.20.0.9
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mailhog
+    ports:
+      - "1025:1025"      # The HTTP port
+      - "8025:8025"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.mailhog.entrypoints=websecure
+      - traefik.http.routers.mailhog.rule=Host(`mailhog.localhost`)
+      - traefik.http.routers.mailhog.tls.options=default
+      - traefik.http.services.mailhog.loadbalancer.server.port=8025
+    networks:
+      web:
+        ipv4_address: 172.20.0.5
+    volumes:
+      - mailhogdata:/data
+
+  elasticsearch:
+    container_name: elasticsearch-main
+    build:
+      context: .
+      dockerfile: docker_files/elasticsearch/Dockerfile
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=docker-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.initial_master_nodes=elasticsearch
+      - xpack.security.enabled=false
+      - http.cors.enabled=true
+      - http.cors.allow-origin=*
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./elasticsearchdata:/usr/share/elasticsearch/data
+      - elasticsearchdata:/data
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.elasticsearch.entrypoints=websecure
+      - traefik.http.routers.elasticsearch.rule=Host(`elasticsearch.localhost`)
+      - traefik.http.routers.elasticsearch.tls.options=default
+      - traefik.http.services.elasticsearch.loadbalancer.server.port=9200
+    networks:
+      web:
+        ipv4_address: 172.20.0.6
+
+  kibana:
+    container_name: kb-container
+    image: docker.elastic.co/kibana/kibana:7.6.0
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      web:
+        ipv4_address: 172.20.0.7
+    depends_on:
+      - elasticsearch
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.kibana.entrypoints=websecure
+      - traefik.http.routers.kibana.rule=Host(`kibana.localhost`)
+      - traefik.http.routers.kibana.tls.options=default
+      - traefik.http.services.kibana.loadbalancer.server.port=5601
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    command: redis-server --appendonly yes --requirepass "password"
+    volumes:
+      - redis_data:/data
+    ports:
+      - "8002:6379"
+    networks:
+      web:
+        ipv4_address: 172.20.0.4
+
+volumes:
+  dbdata:
+    driver: local
+  portainer_datas:
+  mailhogdata:
+  elasticsearchdata:
+  certs:
+  redis_data:

@@ -192,4 +192,3 @@ Export database from mysql container
 ```bash
 sudo /usr/bin/mysqldump --complete-insert --all-databases --result-file=/home/sstoyanov/Database/wowtea_local_10_10.sql --skip-add-drop-table --skip-lock-tables --skip-add-locks --user=root --password=root --host=172.20.0.6 --port=3306
 ```
-# laravel-docker-web-server

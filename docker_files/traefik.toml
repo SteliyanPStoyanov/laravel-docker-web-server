@@ -1,0 +1,40 @@
+[serversTransport]
+insecureSkipVerify = true
+
+[experimental]
+  hub = true
+
+[entryPoints]
+  [entryPoints.web]
+    address = ":80"
+    [entryPoints.web.http.redirections.entryPoint]
+      to = "websecure"
+      scheme = "https"
+  [entryPoints.websecure]
+    address = ":443"
+
+[api]
+  dashboard = true
+  debug = true
+
+[accessLog]
+  filePath = "/docker_file/log/access.log"
+
+[metrics]
+  [metrics.statsD]
+  [metrics.prometheus]
+    addRoutersLabels = true
+
+[tracing]
+  [tracing.elastic]
+  [tracing.instana]
+
+[log]
+    level = "DEBUG"
+
+[providers.docker]
+  watch = true
+  network = "web"
+
+[providers.file]
+  filename = "/etc/traefik/traefik_secure.toml"

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+docker compose up -d
+echo "All containers were started: Yes."
+
+
