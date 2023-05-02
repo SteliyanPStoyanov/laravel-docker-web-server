@@ -23,7 +23,7 @@ services:
       # Enable Hub communication (open the port 9900 and 9901 by default)
       - --experimental.hub=true
       - --metrics.prometheus.addrouterslabels=true
-            # Path to the certificate authority which signed TLS credentials.
+      # Path to the certificate authority which signed TLS credentials.
       - --traefik.tls.ca=/docker_files/proxy.traefik.localhost.pem
       # Path to the certificate (must have proxy.traefik domain name) used to communicate with Traefik Hub Agent.
       - --traefik.tls.cert=/docker_files/proxy.traefik.localhost.pem
@@ -99,9 +99,9 @@ services:
     hostname: mariadb
     mem_reservation: 4000M
     environment:
-      - MYSQL_ROOT_PASSWORD=root
-      - MYSQL_USER=magento
-      - MYSQL_PASSWORD=magento
+      - "MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}"
+      - "MYSQL_USER=${MYSQL_USER}"
+      - "MYSQL_PASSWORD=${MYSQL_PASSWORD}"
     volumes:
       - dbdata:/var/lib/mysql
       - ./docker_files/database/backups:/var/tmp/backups
