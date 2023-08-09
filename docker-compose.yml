@@ -37,7 +37,7 @@ services:
       - ./docker_files/traefik_secure.toml:/etc/traefik/traefik_secure.toml
       - ./docker_files/cert:/etc/traefik/cert
       - ./docker_files/cert-key:/etc/traefik/cert-key
-      - ./docker_files:/certs
+      - ./docker_files/ssl/:/etc/traefik/
     networks:
       web:
         ipv4_address: 172.20.0.2
@@ -50,33 +50,8 @@ services:
       - traefik.http.routers.api.service=api@internal
     restart: always
 
-  hub-agent:
-    image: ghcr.io/traefik/hub-agent-traefik:experimental
-    pull_policy: always
-    container_name: hub-agent
-    restart: "on-failure"
-    command:
-      - run
-      - --hub.token=36ccdfc0-cc6b-496a-8d8f-2a104c7a7d64
-      - --auth-server.advertise-url=http://hub-agent
-      - --traefik.host=traefik.localhost
-      # Path to the certificate authority which signed TLS credentials.
-      - --traefik.tls.ca=/certs/agent.traefik.pem
-      # Path to the certificate (must have proxy.traefik domain name) used to communicate with Traefik Hub Agent.
-      - --traefik.tls.cert=/certs/agent.traefik.pem
-      # Path to the key used to communicate with Traefik Hub Agent.
-      - --traefik.tls.key=/certs/agent.traefik-key.pem
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./docker_files:/certs
-    depends_on:
-      - traefik
-    networks:
-       web:
-        ipv4_address: 172.20.0.10
-
   portainer:
-    image: portainer/portainer-ce # A container that exposes an API to show it's IP address
+    image: portainer/portainer-ce:2.18.4 # A container that exposes an API to show it's IP address
     container_name: portainer
     restart: always
     labels:
@@ -91,7 +66,7 @@ services:
         ipv4_address: 172.20.0.8
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - portainer_datas:/data
+      - portainer_data:/data
 
   db:
     image: mariadb:10.4.13
@@ -115,6 +90,28 @@ services:
     networks:
       web:
         ipv4_address: 172.20.0.3
+
+  postgres:
+    image: postgres
+    container_name: postgres
+    hostname: postgres
+    environment:
+      - "POSTGRES_DB=mkformater"
+      - "POSTGRES_USER=test"
+      - "POSTGRES_PASSWORD=test"
+      - "PGDATA=/data/postgres-tuto"
+    volumes:
+      - postgres_data:/var/lib/postgres
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.postgres.entrypoints=websecure
+      - traefik.http.routers.postgres.rule=Host(`postgres.localhost`)
+      - traefik.http.routers.postgres.tls.options=default
+      - traefik.http.services.postgres.loadbalancer.server.port=5432
+    networks:
+      web:
+        ipv4_address: 172.20.0.27
 
   phpmyadmin:
     container_name: phpmyadmin
@@ -161,57 +158,7 @@ services:
       web:
         ipv4_address: 172.20.0.5
     volumes:
-      - mailhogdata:/data
-
-  elasticsearch:
-    container_name: elasticsearch-main
-    build:
-      context: .
-      dockerfile: docker_files/elasticsearch/Dockerfile
-    environment:
-      - node.name=elasticsearch
-      - cluster.name=docker-cluster
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      - cluster.initial_master_nodes=elasticsearch
-      - xpack.security.enabled=false
-      - http.cors.enabled=true
-      - http.cors.allow-origin=*
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - ./elasticsearchdata:/usr/share/elasticsearch/data
-      - elasticsearchdata:/data
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=web
-      - traefik.http.routers.elasticsearch.entrypoints=websecure
-      - traefik.http.routers.elasticsearch.rule=Host(`elasticsearch.localhost`)
-      - traefik.http.routers.elasticsearch.tls.options=default
-      - traefik.http.services.elasticsearch.loadbalancer.server.port=9200
-    networks:
-      web:
-        ipv4_address: 172.20.0.6
-
-  kibana:
-    container_name: kb-container
-    image: docker.elastic.co/kibana/kibana:7.6.0
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-    networks:
-      web:
-        ipv4_address: 172.20.0.7
-    depends_on:
-      - elasticsearch
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=web
-      - traefik.http.routers.kibana.entrypoints=websecure
-      - traefik.http.routers.kibana.rule=Host(`kibana.localhost`)
-      - traefik.http.routers.kibana.tls.options=default
-      - traefik.http.services.kibana.loadbalancer.server.port=5601
+      - mail-hog_data:/data
 
   redis:
     image: redis:alpine
@@ -224,12 +171,56 @@ services:
     networks:
       web:
         ipv4_address: 172.20.0.4
+        
+  mongo:
+    image: mongo
+    container_name: mongo
+    restart: always
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=root
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.mongo.entrypoints=websecure
+      - traefik.http.routers.mongo.rule=Host(`mongo.localhost`)
+      - traefik.http.routers.mongo.tls.options=default
+      - traefik.http.services.mongo.loadbalancer.server.port=27017
+    networks:
+      web:
+        ipv4_address: 172.20.0.10
+        
+  mongo-express:
+    image: mongo-express
+    container_name: mongo-express
+    restart: always
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: root
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.mongo-express.entrypoints=websecure
+      - traefik.http.routers.mongo-express.rule=Host(`mongo-express.localhost`)
+      - traefik.http.routers.mongo-express.tls.options=default
+      - traefik.http.services.mongo-express.loadbalancer.server.port=8081
+    networks:
+      web:
+        ipv4_address: 172.20.0.22
 
 volumes:
   dbdata:
     driver: local
-  portainer_datas:
-  mailhogdata:
-  elasticsearchdata:
+  portainer_data:
+  mail-hog_data:
   certs:
   redis_data:
+  mongo_data:
+  postgres_data:
