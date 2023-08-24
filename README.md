@@ -222,3 +222,11 @@ bin/start
 ```bash
 bin/stop
 ```
+
+## Run command to make new ssl for new container
+**To add a certificate, run the following command and provide the domain name when prompted:
+bin/add_cert_to_traefik**
+
+```bash
+bin/add_cert_to_traefik
+```

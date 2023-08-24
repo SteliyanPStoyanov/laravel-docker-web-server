@@ -9,15 +9,19 @@ TRAEFIK_CONTAINER="traefik"  # Adjust this if your Traefik container has a diffe
 SSL_DIR_STORE="./docker_files/ssl"
 SSL_DIR="/etc/traefik"
 KEY_NAME_SUFFIX="-key"
-
-# Check for correct number of arguments
-if [[ $# -ne 1 ]]; then
-    echo "Usage: $0 <web_address>"
-    exit 1
+# Check if the domain name is provided
+# Check if the domain name is provided
+if [[ -z "$1" ]]; then
+    read -p "Please enter the domain name: " WEB_ADDRESS
+else
+    WEB_ADDRESS=$1
 fi
 
-# Extract the web address argument
-WEB_ADDRESS=$1
+# Check if WEB_ADDRESS is still empty after the prompt
+if [[ -z "$WEB_ADDRESS" ]]; then
+    echo "Error: Domain name is required."
+    exit 1
+fi
 
 
 # Check if the entry already exists in the config file
