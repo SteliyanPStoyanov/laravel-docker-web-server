@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# Configuration file path
+CONFIG_FILE="./docker_files/traefik_secure.toml"
+# Define the Traefik container name
+TRAEFIK_CONTAINER="traefik"  # Adjust this if your Traefik container has a different name
+
+# SSL files directory and naming convention
+SSL_DIR_STORE="./docker_files/ssl"
+SSL_DIR="/etc/traefik"
+KEY_NAME_SUFFIX="-key"
+
+# Check for correct number of arguments
+if [[ $# -ne 1 ]]; then
+    echo "Usage: $0 <web_address>"
+    exit 1
+fi
+
+# Extract the web address argument
+WEB_ADDRESS=$1
+
+
+# Check if the entry already exists in the config file
+if grep -q "$SSL_DIR/$WEB_ADDRESS" "$CONFIG_FILE"; then
+    echo "Certificate configuration for $WEB_ADDRESS already exists in $CONFIG_FILE."
+    exit 0
+fi
+
+# Generate the certificate using mkcert
+mkcert -cert-file $SSL_DIR_STORE/$WEB_ADDRESS -key-file $SSL_DIR_STORE/$WEB_ADDRESS$KEY_NAME_SUFFIX $WEB_ADDRESS
+
+# Check if the generated files exist
+if [[ ! -f $SSL_DIR_STORE/$WEB_ADDRESS ]] || [[ ! -f $SSL_DIR_STORE/$WEB_ADDRESS$KEY_NAME_SUFFIX ]]; then
+    echo "Error: Certificate or Key file not generated!"
+    exit 1
+fi
+
+# Append the new certificate information to the configuration file
+echo "[[tls.certificates]]" >> $CONFIG_FILE
+echo "certFile = \"$SSL_DIR/$WEB_ADDRESS\"" >> $CONFIG_FILE
+echo "keyFile = \"$SSL_DIR/$WEB_ADDRESS$KEY_NAME_SUFFIX\"" >> $CONFIG_FILE
+echo "" >> $CONFIG_FILE
+
+echo "Certificate added successfully to $CONFIG_FILE"
+
+
+# Check if the Traefik container is running
+if docker ps | grep -q $TRAEFIK_CONTAINER; then
+    echo "Restarting Traefik container..."
+    docker restart $TRAEFIK_CONTAINER
+    echo "Traefik container restarted successfully."
+else
+    echo "Error: Traefik container not found or not running."
+    exit 1
+fi
